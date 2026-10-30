@@ -97,7 +97,7 @@ npm run dist:linux  # Debian : paquet .deb dans release/ (à lancer sous Linux)
 
 ### Publier une nouvelle version
 
-L'application cherche ses mises à jour dans les [Releases GitHub](https://github.com/0xKernelBreaker/sonde/releases) (champ `updates` de `package.json`). Pour un test, la variable `SONDE_UPDATE_URL` peut pointer vers n'importe quel dossier web.
+L'application cherche ses mises à jour dans les [Releases GitHub](https://github.com/Kalytrixx/sonde/releases) (champ `updates` de `package.json`). Pour un test, la variable `SONDE_UPDATE_URL` peut pointer vers n'importe quel dossier web.
 
 La construction est automatique ([`.github/workflows/release.yml`](.github/workflows/release.yml)) :
 

@@ -4,19 +4,19 @@
   "desktopName": "sonde.desktop",
   "version": "1.0.0",
   "description": "Nettoyeur et optimiseur de disque piloté par une IA locale (GPT-OSS via Ollama), pour Windows et Debian",
-  "author": "0xKernelBreaker",
+  "author": "Kalytrixx",
   "license": "MIT",
-  "homepage": "https://github.com/0xKernelBreaker/sonde",
+  "homepage": "https://github.com/Kalytrixx/sonde",
   "repository": {
     "type": "git",
-    "url": "https://github.com/0xKernelBreaker/sonde.git"
+    "url": "https://github.com/Kalytrixx/sonde.git"
   },
   "bugs": {
-    "url": "https://github.com/0xKernelBreaker/sonde/issues"
+    "url": "https://github.com/Kalytrixx/sonde/issues"
   },
   "updates": {
     "provider": "github",
-    "owner": "0xKernelBreaker",
+    "owner": "Kalytrixx",
     "repo": "sonde"
   },
   "main": "electron/main.js",
@@ -41,7 +41,7 @@
   "build": {
     "appId": "io.github.sonde.app",
     "productName": "Sonde",
-    "copyright": "Copyright © 2026 0xKernelBreaker — Licence MIT",
+    "copyright": "Copyright © 2026 Kalytrixx — Licence MIT",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -95,7 +95,7 @@
       "icon": "build/icon.png",
       "category": "System;Utility",
       "executableName": "sonde",
-      "maintainer": "0xKernelBreaker <171289552+0xKernelBreaker@users.noreply.github.com>",
+      "maintainer": "Kalytrixx <171289552+Kalytrixx@users.noreply.github.com>",
       "synopsis": "Nettoyeur de disque avec IA locale",
       "description": "Nettoyer et comprendre son disque avec une IA locale (GPT-OSS via Ollama). Tout passe par la corbeille.",
       "artifactName": "sonde_${version}_amd64.${ext}",
@@ -133,7 +133,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "0xKernelBreaker",
+        "owner": "Kalytrixx",
         "repo": "sonde",
         "releaseType": "draft"
       }
