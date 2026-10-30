@@ -782,6 +782,7 @@ V.drivers = async () => {
   if (!d.errors.length) cards.append(el(`<div class="panel muted">✓ ${isLinux() ? "Aucun périphérique sans pilote ni firmware manquant." : "Aucun périphérique en erreur."}</div>`));
   if (isLinux() && d.logReadable === false) cards.append(el(`<p class="hint">Le journal du noyau n'est pas lisible par ton compte : les firmwares manquants ne peuvent pas être détectés (ajoute ton compte au groupe « adm »).</p>`));
   v.append(cards);
+  if (isLinux()) linuxHardware(v, d);
 
   const upTitle = el(`<div class="section-title"><span>${isLinux() ? "Mises à jour du noyau et des firmwares" : "Mises à jour de pilotes (Windows Update)"}</span><span class="toolbar" style="margin:0"></span></div>`);
   const upBox = el(`<div></div>`);
@@ -812,6 +813,60 @@ V.drivers = async () => {
       iconBtn("?", `Qu'est-ce que c'est ? (${aiName()})`, () => askAI("driver", x, x.name))) },
   ], d.drivers));
 };
+
+// Debian : pilote graphique pour jouer, santé des disques, batterie.
+function linuxHardware(v, d) {
+  if (d.gpuAssist?.length) {
+    v.append(el(`<div class="section-title">Pilote graphique pour jouer</div>`));
+    const cards = el(`<div class="cards"></div>`);
+    for (const g of d.gpuAssist) {
+      const c = el(`<div class="card ${g.action ? "" : "info"}"><div class="body"><div class="title"></div><div class="why"></div></div></div>`);
+      $(".title", c).innerHTML = `${esc(g.title)} <span class="tag ${g.ok ? "good" : g.action ? "warn" : ""}">${esc(g.tag)}</span>`;
+      $(".why", c).textContent = g.why + (g.note ? ` ${g.note}` : "");
+      if (g.action) c.append(btn(g.action.label, async (b) => {
+        if (!await confirmBox({ title: `${g.action.label} ?`, admin: true, ok: g.action.label,
+          body: `<p>${esc(g.why)}</p>${g.note ? `<p>${esc(g.note)}</p>` : ""}<p>Annulable depuis le journal.</p>` })) return;
+        const r = await act(b, () => api("/api/drivers/gpu", { id: g.action.id }), "Installation… (plusieurs minutes)");
+        if (!r) return;
+        toast(r.unchanged ? "Pas de version plus récente dans les rétroportages : rien n'a changé." : r.reboot ? "Installé. Redémarre pour utiliser le nouveau pilote." : "Fait. Annulable depuis le journal.", 8000);
+        V.drivers();
+      }, "primary"));
+      cards.append(c);
+    }
+    v.append(cards);
+  }
+
+  // Santé des disques (SMART, lu par udisks2 comme l'outil Disques de GNOME).
+  if (d.disks) {
+    v.append(el(`<div class="section-title">Santé des disques</div>`));
+    const ST = { good: ["bon état", "good"], warn: ["à surveiller", "warn"], bad: ["à remplacer", "bad"], unknown: ["Non disponible", ""] };
+    v.append(table([
+      { label: "Disque", render: (x) => `<div class="t">${esc(x.model)}</div><div class="s">${esc([x.kind, x.size ? size(x.size) : null].filter(Boolean).join(" · "))}</div>` },
+      { label: "État", render: (x) => `<span class="tag ${ST[x.state][1]}">${ST[x.state][0]}</span>${x.notes.length ? `<div class="s">${esc(x.notes.join(" · "))}</div>` : ""}` },
+      { label: "Température", num: true, render: (x) => (x.temp != null ? `${x.temp} °C` : "–") },
+      { label: "En marche", num: true, render: (x) => (x.hours != null ? `${nf0.format(x.hours)} h` : "–") },
+      { label: "Usure", num: true, render: (x) => (x.wear != null ? `${x.wear} %` : "–") },
+    ], d.disks, { empty: "Aucun disque ne donne son état de santé (SMART)." }));
+    v.append(el(`<p class="hint">Un disque « à remplacer » peut lâcher sans prévenir : sauvegarde tes fichiers dès maintenant. L'usure d'un SSD NVMe est celle que le disque annonce lui-même (100 % = durée de vie prévue atteinte).</p>`));
+  }
+
+  // Batterie (portables)
+  if (d.battery) {
+    v.append(el(`<div class="section-title">Batterie</div>`));
+    const k = el(`<div class="kpis"></div>`);
+    for (const b of d.battery) {
+      const h = b.health;
+      k.append(el(`<div class="kpi ${h == null ? "" : h < 60 ? "bad" : h < 80 ? "warn" : "good"}"><div class="k">${esc(b.name)}</div><div class="v">${h != null ? `${h} %` : "–"}</div>
+        <div class="d">${h != null ? "capacité restante par rapport à neuve" : "usure : Non disponible"}${b.cycles ? ` · ${b.cycles} cycles` : ""}${b.level != null ? ` · chargée à ${b.level} %` : ""}</div></div>`));
+    }
+    v.append(k);
+    const p = d.power;
+    const note = !p ? "" : p.tlp && p.ppd ? "TLP et le mode d'énergie de GNOME sont actifs en même temps : ils se contredisent. Garde-en un seul (désinstaller l'un rend la main à l'autre)."
+      : p.tlp ? "TLP gère l'énergie : le choix Économie / Équilibré / Performances de GNOME n'est pas disponible. Normal si tu préfères TLP, souvent meilleur au repos."
+        : p.ppd ? "Le mode d'énergie de GNOME (Économie, Équilibré, Performances) gère la batterie." : "Aucun gestionnaire d'énergie actif : installe power-profiles-daemon ou TLP pour gagner en autonomie.";
+    if (note) v.append(el(`<p class="hint">${esc(note)}</p>`));
+  }
+}
 
 // ============================================================== Sécurité ===
 let secPoll = null;
@@ -1064,7 +1119,8 @@ V.updates = async () => {
     $(".title", c).innerHTML = `${esc(i.title)} <span class="tag ${LV[i.level]}">${i.level === "bad" ? "important" : i.level === "warn" ? "à regarder" : "information"}</span>`;
     $(".why", c).textContent = i.why;
     if (i.detail) $(".body", c).append(Object.assign(el(`<pre class="issue-detail"></pre>`), { textContent: i.detail }));
-    if (i.fix) c.append(btn(i.fix === "repair" ? "Réparer" : "Corriger", async (b) => {
+    if (i.tool) c.append(btn("Ouvrir Timeshift", () => openTool(i.tool)));
+    if (i.fix) c.append(btn(i.fix === "repair" ? "Réparer" : i.fix === "timeshift-install" ? "Installer Timeshift" : "Corriger", async (b) => {
       if (!await confirmBox({ title: i.title, admin: true, body: esc(i.why) })) return;
       if (await act(b, () => api("/api/updates/fix", { id: i.fix }), "En attente de l'autorisation…")) { toast("Fait. Enregistré dans le journal.", 6000); V.updates(); }
     }, "primary"));
@@ -1072,6 +1128,22 @@ V.updates = async () => {
   }
   if (!issues.length) cards.append(el(`<div class="panel muted">✓ Rien à signaler : dépôts, installation des paquets et TRIM des SSD sont en ordre.</div>`));
   v.append(cards);
+
+  // Prochaine version de Debian : ce qu'il faut vérifier avant de changer de version.
+  const nx = d.nextRelease;
+  if (nx) {
+    const bad = nx.checks.filter((c) => !c.ok && !c.warnOnly).length, warn = nx.checks.filter((c) => !c.ok && c.warnOnly).length;
+    v.append(el(`<div class="section-title"><span>Prêt pour ${esc(nx.next.name)} ?</span><span class="tag ${bad ? "bad" : warn ? "warn" : "good"}">${bad ? `${bad} point${bad > 1 ? "s" : ""} bloquant${bad > 1 ? "s" : ""}` : warn ? `${warn} point${warn > 1 ? "s" : ""} à regarder` : "prêt"}</span></div>`));
+    const p = el(`<div class="panel"><p class="hint">${esc(nx.next.name)} (« ${esc(nx.next.codename)} ») se prépare. Ces vérifications reprennent celles des guides de mise à niveau : quand elle sortira, tu sauras si ton système est prêt. Sonde ne change pas de version à ta place.</p><div class="steps up-checks"></div></div>`);
+    for (const c of nx.checks) {
+      const r = el(`<div class="${c.ok ? "done" : "now"}"><b></b> <span class="muted"></span></div>`);
+      $("b", r).textContent = c.title;
+      $(".muted", r).textContent = `· ${c.detail}`;
+      if (!c.ok) r.style.color = c.warnOnly ? "var(--warn)" : "var(--bad)";
+      $(".up-checks", p).append(r);
+    }
+    v.append(p);
+  }
 
   // Détail des mises à jour
   if (apt.items.length) {
@@ -1122,8 +1194,10 @@ V.updates = async () => {
     if (ok) { toast("Terminé.", 4000); V.updates(); refreshStatus(); }
   }
   async function install(b) {
+    // Timeshift configuré : instantané du système proposé (coché) avant l'installation.
+    const snap = d.snapshot?.configured && apt.items.length;
     if (!await confirmBox({ title: `Installer ${n} mise${n > 1 ? "s" : ""} à jour ?`, admin: true,
-      body: `<p>${apt.items.length} paquet(s) Debian${sec.length ? `, dont ${sec.length} de sécurité` : ""}${apt.download ? ` · ${size(apt.download)} à télécharger` : ""}${fp.length ? ` ; ${fp.length} application(s) Flatpak` : ""}.</p><p>Ne coupe pas le PC pendant l'installation. Un redémarrage peut être demandé ensuite (nouveau noyau).</p>` })) return;
-    stream(b, "/api/updates/apply", { flatpak: true }, "Installation des mises à jour");
+      body: `<p>${apt.items.length} paquet(s) Debian${sec.length ? `, dont ${sec.length} de sécurité` : ""}${apt.download ? ` · ${size(apt.download)} à télécharger` : ""}${fp.length ? ` ; ${fp.length} application(s) Flatpak` : ""}.</p><p>Ne coupe pas le PC pendant l'installation. Un redémarrage peut être demandé ensuite (nouveau noyau).</p>${snap ? `<label class="upd-auto"><input type="checkbox" id="updSnap" checked> Créer d'abord un instantané Timeshift (quelques minutes la première fois)</label>` : ""}` })) return;
+    stream(b, "/api/updates/apply", { flatpak: true, snapshot: !!(snap && $("#updSnap")?.checked) }, "Installation des mises à jour");
   }
 };

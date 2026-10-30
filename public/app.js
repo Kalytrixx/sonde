@@ -272,8 +272,6 @@ async function refreshStatus() {
     // Debian : les mises à jour (apt, Flatpak, dépôts) en tête de la section Système.
     if (state.status.platform === "linux" && !SECTIONS.system.views.some(([v]) => v === "updates")) SECTIONS.system.views.unshift(["updates", "Mises à jour"]);
     document.body.dataset.os = state.status.platform;
-    const gNav = $('#nav a[data-section="gaming"]');
-    if (gNav) gNav.style.display = state.status.platform === "win32" ? "" : "none";
     const t = $("#trashNote");
     if (t) t.textContent = `Tout part dans ${OS.trash} : récupérable tant que tu ne la vides pas.`;
   }

@@ -55,7 +55,7 @@ V.settings = async () => {
     <label class="anim-tg">Animations</label></div><div class="amb-cards"></div></div>`);
   const sw = switchEl(FX.enabled(), (on, s) => { FX.set(on); s.classList.toggle("on", on); toast(on ? "Animations activées." : "Animations coupées."); });
   $(".anim-tg", look).append(sw);
-  if (FX.reduced()) $(".anim-tg", look).title = "Windows demande de réduire les animations : elles restent coupées.";
+  if (FX.reduced()) $(".anim-tg", look).title = `${isLinux() ? "Le système" : "Windows"} demande de réduire les animations : elles restent coupées.`;
   const cardsBox = $(".amb-cards", look);
   const drawAmbs = () => {
     cardsBox.innerHTML = "";
@@ -84,13 +84,13 @@ V.settings = async () => {
   const sb = $(".sp-body", start);
   if (p.openAtLogin == null) {
     sb.append(srow({ icon: SET_ICON.power, tile: G("#0d9488", "#2dd4bf"), title: "Lancer Sonde à l'ouverture de session",
-      desc: isLinux() ? "Bientôt disponible sous Debian." : "Disponible dans l'application installée.", dim: true }));
+      desc: "Disponible dans l'application installée.", dim: true }));
   } else {
     const login = switchEl(p.openAtLogin, async (on, s) => {
-      if (await act(null, () => api("/api/prefs", { openAtLogin: on }))) { s.classList.toggle("on", on); toast(on ? "Sonde se lancera avec Windows." : "Sonde ne se lancera plus avec Windows."); }
+      if (await act(null, () => api("/api/prefs", { openAtLogin: on }))) { s.classList.toggle("on", on); toast(on ? `Sonde se lancera avec ${isLinux() ? "ta session" : "Windows"}.` : `Sonde ne se lancera plus avec ${isLinux() ? "ta session" : "Windows"}.`); }
     });
     sb.append(srow({ icon: SET_ICON.power, tile: G("#0d9488", "#2dd4bf"), title: "Lancer Sonde à l'ouverture de session",
-      desc: "Sonde s'ouvre tout seul quand tu te connectes à Windows.", control: login, onClick: () => login.click() }));
+      desc: `Sonde s'ouvre tout seul ${isLinux() ? "quand tu ouvres ta session" : "quand tu te connectes à Windows"}.`, control: login, onClick: () => login.click() }));
   }
   sb.append(srow({ icon: ICON.spark, tile: G("#8b5cf6", "#d946ef"), title: "Assistant de l'IA", desc: "Rouvrir l'assistant qui prépare l'IA (Ollama, modèle, ou IA en ligne).",
     control: btn("Ouvrir", () => openSetup()), onClick: () => openSetup() }));
@@ -202,7 +202,7 @@ V["set-ai"] = async () => {
   $(".sp-body", p).append(test);
   if (!local) {
     $(".sp-body", p).append(srow({ icon: SET_ICON.key, tile: G("#d97706", "#fbbf24"), title: "Clé d'API",
-      desc: c.saved.hasKey ? (c.keyProtected ? "Enregistrée et chiffrée par Windows (jamais affichée)." : "Enregistrée en clair : lance l'application installée pour qu'elle soit chiffrée.") : "Aucune clé enregistrée.",
+      desc: c.saved.hasKey ? (c.keyProtected ? `Enregistrée et chiffrée par ${isLinux() ? "le trousseau de GNOME" : "Windows"} (jamais affichée).` : "Enregistrée en clair : lance l'application installée pour qu'elle soit chiffrée.") : "Aucune clé enregistrée.",
       control: c.saved.hasKey ? btn("Oublier la clé", async (b) => {
         if (!await confirmBox({ title: "Oublier la clé d'API ?", body: "L'IA en ligne ne fonctionnera plus tant que tu n'auras pas remis une clé.", danger: true, ok: "Oublier" })) return;
         if (await act(b, () => api("/api/ai/forget-key", {}))) { toast("Clé oubliée."); await refreshStatus(); V["set-ai"](); }
@@ -333,8 +333,11 @@ V["set-privacy"] = async () => {
     { when: "Recherche de mises à jour de Sonde", to: "github.com", what: "Demande de la dernière version. Rien sur toi ni ton PC (hormis ton adresse IP, comme pour tout site).", active: p.autoUpdate, note: p.autoUpdate ? "automatique chaque jour" : "seulement à la main" },
     { when: "Préparer l'IA (assistant)", to: "ollama.com", what: "Téléchargement d'Ollama et du modèle choisi.", active: false },
     { when: "Test de la connexion (pages Réseau et Gaming)", to: "Cloudflare, Google, Quad9", what: "Ping et mesure du débit avec des données de test ; comparaison de serveurs DNS avec des noms de sites connus.", active: false },
-    ...(isLinux() ? [] : [
       { when: "Ping des serveurs de jeu (page Gaming)", to: "Valve (Steam), Epic Games, Blizzard, Google", what: "Quelques paquets de ping ; la liste des relais Steam est demandée à Valve.", active: false },
+    ...(isLinux() ? [
+      { when: "Noms des jeux désinstallés (page Gaming › Composants)", to: "Boutique Steam (Valve)", what: "Seulement le numéro d'un jeu dont il reste des fichiers, pour afficher son nom.", active: false },
+      { when: "Mesa récent, pilote NVIDIA, Timeshift (pages Pilotes et Mises à jour)", to: "deb.debian.org", what: "Téléchargement des paquets par apt, comme toute mise à jour de Debian.", active: false },
+    ] : [
       { when: "Mises à jour de pilotes (page Pilotes)", to: "Windows Update (Microsoft)", what: "Recherche faite par Windows lui-même.", active: false },
       { when: "Signatures antivirus (page Sécurité)", to: "Microsoft Defender", what: "Mise à jour faite par Defender lui-même.", active: false },
     ]),
@@ -350,7 +353,7 @@ V["set-privacy"] = async () => {
   const stored = spanel("Ce qui est enregistré sur ton PC");
   $(".sp-body", stored).append(el(`<ul class="privacy-list">
     <li>Le dernier scan (arborescence et tailles), l'historique des scans, les notes de l'IA, le journal des actions et les réglages, dans <code>${esc(p.data.dir)}</code>.</li>
-    <li>${c.saved.hasKey ? (c.keyProtected ? "Ta clé d'API, chiffrée par Windows : seul ton compte Windows peut la lire." : "Ta clé d'API, en clair dans les réglages (version lancée depuis les sources).") : "Aucune clé d'API."}</li>
+    <li>${c.saved.hasKey ? (c.keyProtected ? (isLinux() ? "Ta clé d'API, chiffrée par le trousseau de GNOME : seul ton compte peut la lire." : "Ta clé d'API, chiffrée par Windows : seul ton compte Windows peut la lire.") : "Ta clé d'API, en clair dans les réglages (version lancée depuis les sources).") : "Aucune clé d'API."}</li>
     <li>Rien d'autre. Tu peux tout effacer dans l'onglet Général, ou en supprimant ce dossier.</li>
   </ul>`));
   v.append(stored);

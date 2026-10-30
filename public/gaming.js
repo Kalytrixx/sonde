@@ -1,4 +1,4 @@
-// Sonde — page Gaming (Windows), d'après la maquette « Sonde v2 » : onglets
+// Sonde — page Gaming (Windows et Debian), d'après la maquette « Sonde v2 » : onglets
 // Jeu, Composants, Réseau et « Ce qu'on ne fait pas ». Tout vient des mesures
 // faites sur ce PC ; ce qui ne peut pas être mesuré est affiché « Non disponible ».
 "use strict";
@@ -27,7 +27,13 @@ const LAUNCHERS = [
   { re: /riot/i, name: "Riot Client", c: ["#b91c1c", "#ef4444"] },
   { re: /rockstar/i, name: "Rockstar Games Launcher", c: ["#a16207", "#facc15"] },
   { re: /overwolf/i, name: "Overwolf", c: ["#be185d", "#ec4899"] },
+  // Debian
+  { re: /heroic/i, name: "Heroic Games Launcher", c: ["#0f766e", "#2dd4bf"] },
+  { re: /lutris/i, name: "Lutris", c: ["#c2410c", "#fb923c"] },
+  { re: /bottles/i, name: "Bottles", c: ["#7e22ce", "#c084fc"] },
+  { re: /itch/i, name: "itch", c: ["#be123c", "#fb7185"] },
 ];
+const OS_START = () => (isLinux() ? "ta session" : "Windows");
 const RARE_DAYS = 30;
 
 // Données partagées par les quatre onglets ; relues après chaque changement.
@@ -83,10 +89,15 @@ function hzCard(d) {
   const c = el(`<div class="panel g-card"><div class="g-head"><div class="tile" style="background:${G("#0284c7", "#22d3ee")}">${svg(GI.screen)}</div><span class="gt">Fréquence de l'écran</span><span class="gtag"></span></div>
     <div class="hz-now"><b></b><span></span></div>
     <div class="hzfx"></div>
-    <p class="g-p">Un écran 144 ou 165 Hz qui tourne à 60 Hz arrive souvent, par exemple après un changement de câble ou de pilote. Sonde lit les fréquences possibles et propose la plus haute, en un clic.</p>
+    <p class="g-p"></p>
     <div class="g-meta"></div><div class="g-act"></div></div>`);
+  // Sous Debian (GNOME), la fréquence se change dans Paramètres › Écrans : Sonde la lit et l'indique.
+  $(".g-p", c).textContent = `Un écran 144 ou 165 Hz qui tourne à 60 Hz arrive souvent, par exemple après un changement de câble ou de pilote. ${d.canSetHz
+    ? "Sonde lit les fréquences possibles et propose la plus haute, en un clic."
+    : "Sonde lit les fréquences possibles et t'indique la plus haute ; elle se change dans Paramètres › Écrans."}`;
   if (!shown) {
     $(".hz-now b", c).innerHTML = na;
+    if (d.displayNote) $(".g-meta", c).textContent = d.displayNote;
     return c;
   }
   const low = shown.max > shown.hz + 5;
@@ -104,8 +115,8 @@ function hzCard(d) {
   const modes = (shown.modes || []).filter((m) => m >= 50);
   $(".g-meta", c).textContent = [shown.name, shown.conn, modes.length ? `${modes.join(", ")} Hz` : null].filter(Boolean).join(" · ")
     + (ds.length > 1 ? ` · ${ds.length} écrans : ${ds.map((x) => `${x.name} ${x.hz} Hz`).join(", ")}` : "");
-  $(".g-act", c).append(low
-    ? btn(`Passer à ${shown.max} Hz`, (b) => gApply(`Passer ${shown.name} à ${shown.max} Hz ?`,
+  $(".g-act", c).append(low && !d.canSetHz ? btn("Ouvrir les paramètres d'écran ↗", () => openTool("display"), "primary")
+    : low ? btn(`Passer à ${shown.max} Hz`, (b) => gApply(`Passer ${shown.name} à ${shown.max} Hz ?`,
       `<p>L'écran et la carte graphique acceptent ${shown.max} Hz en ${shown.width}×${shown.height}.</p><p>L'écran peut clignoter une seconde. Si l'image ne revient pas, elle reprend toute seule l'ancienne fréquence au bout de quelques secondes, et le journal permet d'annuler.</p>`,
       { id: "hz", params: { device: shown.device, hz: shown.max } }, { b, ok: `Passer à ${shown.max} Hz`, done: `Écran réglé sur ${shown.max} Hz. Annulable depuis le journal.` }), "primary")
     : Object.assign(btn("✓ Au maximum", () => {}), { disabled: true }));
@@ -117,9 +128,21 @@ function ramCard(d) {
   const r = d.ram;
   const c = el(`<div class="panel g-card"><div class="g-head"><div class="tile" style="background:${G("#7c3aed", "#a78bfa")}">${svg(GI.ram)}</div><span class="gt">Vitesse de la RAM</span><span class="gtag"></span></div>
     <div class="ram-bars"></div>
-    <p class="g-p">Sonde compare la vitesse réelle à la vitesse prévue par les barrettes (Win32_PhysicalMemory). Si l'EXPO n'est pas activé dans le BIOS, le gain sur les FPS minimum est réel. Sonde ne peut pas l'activer depuis Windows, mais peut expliquer comment.</p>
+    <p class="g-p"></p>
     <div class="g-meta"></div><div class="ram-steps" hidden></div><div class="g-act"></div></div>`);
-  if (!r) { $(".ram-bars", c).innerHTML = na; return c; }
+  $(".g-p", c).textContent = `Sonde compare la vitesse réelle à la vitesse prévue par les barrettes (${d.ramSource}). Si l'EXPO n'est pas activé dans le BIOS, le gain sur les FPS minimum est réel. Sonde ne peut pas l'activer depuis ${isLinux() ? "Debian" : "Windows"}, mais peut expliquer comment.`;
+  if (!r) {
+    $(".ram-bars", c).innerHTML = na;
+    // Debian : la lecture des barrettes (dmidecode) demande le mot de passe administrateur.
+    if (d.ramAdmin) {
+      $(".g-meta", c).textContent = "La vitesse des barrettes ne se lit qu'avec les droits administrateur.";
+      $(".g-act", c).append(btn("Lire la vitesse", async (b) => {
+        const ram = await act(b, () => api("/api/gaming/ram", {}), "En attente de l'autorisation…");
+        if (ram) { gData.ram = ram; c.replaceWith(ramCard(gData)); }
+      }));
+    }
+    return c;
+  }
   const prof = r.profile;
   $(".gtag", c).innerHTML = r.slow ? gTag(`${prof} désactivé`, "warn") : r.rated ? gTag(`${prof} actif`, "good") : gTag("Vitesse prévue inconnue");
   const top = Math.max(r.rated || 0, r.conf);
@@ -189,8 +212,8 @@ function bloatCard() {
 // --- Ce qui tourne en fond
 function backgroundPanel(d, startup) {
   const p = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title">Ce qui tourne en fond pendant le jeu</div>
-    <div class="sp-desc">Launchers lancés au démarrage, overlays, synchronisation OneDrive, Windows Update. Sonde propose de couper le démarrage automatique de ceux que tu n'utilises pas.</div></div><div class="cut"></div></div>
-    <div class="bg-cols"><div><div class="bg-sub">Lancés au démarrage de Windows</div><div class="bg-l"></div></div><div><div class="bg-sub">En ce moment</div><div class="bg-r"></div></div></div></div>`);
+    <div class="sp-desc">${isLinux() ? "Launchers lancés à l'ouverture de session, overlays, mises à jour automatiques" : "Launchers lancés au démarrage, overlays, synchronisation OneDrive, Windows Update"}. Sonde propose de couper le démarrage automatique de ceux que tu n'utilises pas.</div></div><div class="cut"></div></div>
+    <div class="bg-cols"><div><div class="bg-sub">${isLinux() ? "Lancés à l'ouverture de session" : "Lancés au démarrage de Windows"}</div><div class="bg-l"></div></div><div><div class="bg-sub">En ce moment</div><div class="bg-r"></div></div></div></div>`);
   const now = Date.now();
   const items = [];
   for (const s of startup) {
@@ -215,15 +238,15 @@ function backgroundPanel(d, startup) {
       r.onclick = (e) => { if (!e.target.closest("button")) sw.click(); };
       left.append(r);
     }
-    if (!items.length) left.append(el(`<div class="empty">Aucun launcher ne démarre avec Windows.</div>`));
+    if (!items.length) left.append(el(`<div class="empty">${isLinux() ? "Aucun launcher ne démarre avec ta session." : "Aucun launcher ne démarre avec Windows."}</div>`));
     const rare = items.filter((i) => i.rare && i.s.enabled);
     const cut = $(".cut", p);
     cut.innerHTML = "";
     const b = btn(rare.length ? `Couper les ${rare.length} peu utilisés` : "✓ Rien à couper", async () => {
       if (!await confirmBox({ title: `Couper ${rare.length} launcher${rare.length > 1 ? "s" : ""} au démarrage ?`, admin: rare.some((i) => i.s.scope === "machine"),
-        body: `<p>${rare.map((i) => esc(i.s.name)).join(", ")} ne démarreront plus avec Windows. Ils restent installés et s'ouvrent normalement quand tu les lances.</p>`, ok: "Couper" })) return;
+        body: `<p>${rare.map((i) => esc(i.s.name)).join(", ")} ne démarreront plus avec ${OS_START()}. Ils restent installés et s'ouvrent normalement quand tu les lances.</p>`, ok: "Couper" })) return;
       for (const i of rare) if (await act(null, () => api("/api/startup/set", { id: i.s.id, enable: false }))) i.s.enabled = false;
-      toast("Ces launchers ne démarreront plus avec Windows. Annulable depuis le journal.", 6000);
+      toast(`Ces launchers ne démarreront plus avec ${OS_START()}. Annulable depuis le journal.`, 6000);
       draw();
     }, rare.length ? "primary" : "");
     b.disabled = !rare.length;
@@ -231,73 +254,56 @@ function backgroundPanel(d, startup) {
   };
   async function toggle(i, on) {
     if (i.s.scope === "machine" && !await confirmBox({ title: `${on ? "Activer" : "Désactiver"} ${i.s.name} au démarrage ?`, admin: true, body: "Cette entrée concerne tous les utilisateurs du PC." })) return draw();
-    if (await act(null, () => api("/api/startup/set", { id: i.s.id, enable: on }))) { i.s.enabled = on; toast(`${i.s.name} ${on ? "démarrera" : "ne démarrera plus"} avec Windows.`); }
+    if (await act(null, () => api("/api/startup/set", { id: i.s.id, enable: on }))) { i.s.enabled = on; toast(`${i.s.name} ${on ? "démarrera" : "ne démarrera plus"} avec ${OS_START()}.`); }
     draw();
   }
   draw();
 
-  // En ce moment : overlays, OneDrive, Windows Update.
+  // En ce moment : overlays, synchronisation, mises à jour (décrits par le serveur).
   const right = $(".bg-r", p);
-  const nowRow = (icon, tile, name, desc, action) => {
-    const r = el(`<div class="lrow now fx-row"><div class="tile sm" style="background:${tile}">${svg(icon)}</div><div><div class="t"></div><div class="s"></div></div><span class="a"></span></div>`);
-    $(".t", r).textContent = name; $(".s", r).textContent = desc;
-    if (action) $(".a", r).append(action);
+  for (const n of d.bgNow) {
+    const r = el(`<div class="lrow now fx-row"><div class="tile sm" style="background:${NOW_TILE[n.icon] || NOW_TILE.update}">${svg(GI[n.icon] || GI.update)}</div><div><div class="t"></div><div class="s"></div></div><span class="a"></span></div>`);
+    $(".t", r).textContent = n.name; $(".s", r).textContent = n.desc;
+    if (n.action) $(".a", r).append(actionBtn(n.action));
     right.append(r);
-  };
-  const overlays = d.background.filter((b) => b.kind === "overlay" || b.name === "Steam" || /NVIDIA/.test(b.name));
-  nowRow(GI.overlay, G("#4f46e5", "#818cf8"), overlays.length ? `Overlays : ${overlays.map((b) => b.name).join(", ")}` : "Overlays",
-    overlays.length ? "Actifs dans tous les jeux. Coût faible, sauf avec certains anti-triche." : "Aucun overlay ne tourne en ce moment.");
-  const od = d.background.find((b) => b.name === "OneDrive");
-  nowRow(GI.cloud, G("#0369a1", "#0ea5e9"), "Synchronisation OneDrive",
-    od ? `En cours d'exécution · ${size(od.mem)} de mémoire. La pause se fait depuis son icône, près de l'horloge.` : "OneDrive ne tourne pas.");
-  const wu = d.wuPause;
-  const wuBtn = wu ? null : btn("Suspendre 1 semaine", (b) => gApply("Suspendre Windows Update pendant 1 semaine ?",
-    "<p>Windows ne téléchargera ni n'installera de mise à jour pendant 7 jours, comme avec « Suspendre pendant 1 semaine » dans les Paramètres. Les mises à jour reprennent toutes seules ensuite.</p>",
-    { id: "wupause" }, { admin: true, b, ok: "Suspendre", done: "Windows Update suspendu pendant 1 semaine. Annulable depuis le journal." }));
-  nowRow(GI.update, G("#475569", "#64748b"), "Windows Update", wu ? `En pause jusqu'au ${new Date(wu).toLocaleDateString("fr-FR")}` : "Pas en pause. Téléchargement en cours : Non disponible.", wuBtn);
+  }
   return p;
 }
+const NOW_TILE = { overlay: G("#4f46e5", "#818cf8"), cloud: G("#0369a1", "#0ea5e9"), update: G("#475569", "#64748b") };
+// Bouton d'une action décrite par le serveur : confirmation, puis /api/gaming/apply.
+const actionBtn = (a, cls = "") => btn(a.label, (b) => gApply(a.title, `<p>${esc(a.body)}</p>`, { id: a.id, params: a.params },
+  { admin: !!a.admin, b, ok: a.ok || a.label, done: a.done }), cls);
 
-// --- Réglages Windows liés au jeu
+// --- Réglages du système liés au jeu (décrits par le serveur)
 function winPanel(d) {
-  const w = d.win;
-  const p = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title">Réglages Windows liés au jeu</div><div class="sp-desc">Ce que chaque réglage change vraiment, et ce que Sonde conseille.</div></div></div><div class="sp-body"></div></div>`);
+  const p = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title"></div><div class="sp-desc">Ce que chaque réglage change vraiment, et ce que Sonde conseille.</div></div></div><div class="sp-body"></div></div>`);
+  $(".sp-title", p).textContent = isLinux() ? "Réglages du système liés au jeu" : "Réglages Windows liés au jeu";
   const body = $(".sp-body", p);
-  const row = (title, desc, ok, tagText, ctl) => {
-    const r = el(`<div class="wg-row fx-row"><div><div class="t"></div>${gTag(tagText, ok ? "good" : "warn")}</div><div class="d"></div><div class="c"></div></div>`);
-    $(".t", r).textContent = title; $(".d", r).textContent = desc; $(".c", r).append(ctl);
+  for (const t of d.tweaks) {
+    let ok = t.ok, tag = t.tag, ctl;
+    if (t.kind === "toggle") {
+      ok = t.on === t.keepOn;
+      tag = ok ? (t.keepOn ? "Conseil : laisser activé" : "Bien réglé") : (t.keepOn ? "Conseil : activer" : "Conseil : couper");
+      ctl = el(`<label class="wg-tg"><span></span></label>`);
+      $("span", ctl).textContent = t.on ? "Activé" : "Désactivé";
+      ctl.append(switchEl(t.on, (next) => gApply(`${next ? "Activer" : "Désactiver"} : ${t.title} ?`, `<p>${esc(t.desc)}</p>`, { id: t.id, on: next },
+        { admin: !!t.admin, done: t.done, ok: next ? "Activer" : "Désactiver" })));
+    } else if (t.kind === "seg") {
+      // Choix parmi plusieurs modes, seulement ceux qui existent sur ce PC.
+      ctl = el(`<div class="segs sm"></div>`);
+      for (const o of t.options) {
+        const b = el(`<button class="${t.value === o.k ? "on" : ""}"></button>`);
+        b.textContent = o.label;
+        b.disabled = !!o.disabled;
+        if (b.disabled) b.title = "Ce mode n'existe pas sur ce PC.";
+        b.onclick = () => t.value !== o.k && gApply(`Passer en mode ${o.label} ?`, `<p>${esc(t.confirm || t.desc)}</p>`, { id: t.id, params: { plan: o.k } }, { ok: o.label });
+        ctl.append(b);
+      }
+    } else ctl = t.action ? actionBtn(t.action) : el(`<span></span>`);
+    const r = el(`<div class="wg-row fx-row"><div><div class="t"></div>${gTag(tag, ok ? "good" : ok === false ? "warn" : "")}</div><div class="d"></div><div class="c"></div></div>`);
+    $(".t", r).textContent = t.title; $(".d", r).textContent = t.desc; $(".c", r).append(ctl);
     body.append(r);
-  };
-  const tg = (on, id, title, body_, extra = {}) => {
-    const wrap = el(`<label class="wg-tg"><span></span></label>`);
-    $("span", wrap).textContent = on ? "Activé" : "Désactivé";
-    wrap.append(switchEl(on, (next) => gApply(`${next ? "Activer" : "Désactiver"} : ${title} ?`, `<p>${esc(body_)}</p>`, { id, on: next }, { ...extra, ok: next ? "Activer" : "Désactiver" })));
-    return wrap;
-  };
-  const W = [
-    ["gamemode", "Mode Jeu", "Windows donne la priorité au jeu au premier plan et repousse les installations de mises à jour et les notifications. Gain faible, sans contrepartie.", w.gameMode, true, {}],
-    ["hags", "Planification GPU accélérée par le matériel", "La carte graphique gère elle-même sa file d'images. Réduit un peu la latence, et sert à la génération d'images (AMD Fluid Motion Frames, DLSS Frame Generation). Redémarrage nécessaire.", w.hags, true, { admin: true, done: "Fait. Redémarre le PC pour que ce soit pris en compte." }],
-    ["bgrecord", "Enregistrement en arrière-plan (Game Bar)", "Enregistre en continu les dernières secondes de jeu. Coûte quelques pour cent de FPS et une partie de l'encodeur vidéo. L'enregistrement manuel reste possible si tu le coupes.", w.bgRecord, false, {}],
-  ];
-  for (const [id, title, desc, on, keepOn, extra] of W) {
-    const ok = on === keepOn;
-    row(title, desc, ok, ok ? (keepOn ? "Conseil : laisser activé" : "Bien réglé") : (keepOn ? "Conseil : activer" : "Conseil : couper"), tg(on, id, title, desc, extra));
   }
-  // Mode d'alimentation : trois choix, ceux qui existent sur ce PC.
-  const PW = [["saver", "Économie"], ["balanced", "Équilibré"], ["high", "Performances"]];
-  const seg = el(`<div class="segs sm"></div>`);
-  for (const [k, label] of PW) {
-    const b = el(`<button class="${w.plan.active === k ? "on" : ""}"></button>`);
-    b.textContent = label;
-    b.disabled = !w.plan.available.includes(k);
-    if (b.disabled) b.title = "Ce mode n'existe pas sur ce PC.";
-    b.onclick = () => w.plan.active !== k && gApply(`Passer en mode ${label} ?`, `<p>Même réglage que « Options d'alimentation » dans le Panneau de configuration.</p>`, { id: "power", params: { plan: k } }, { ok: label });
-    seg.append(b);
-  }
-  row("Mode d'alimentation", `Sur un PC fixe récent, Équilibré suffit : le processeur monte en fréquence en quelques millisecondes. Performances évite seulement de rares baisses de fréquence. Économie bride le jeu.${w.plan.active ? "" : ` Mode actuel : ${w.plan.name || "Non disponible"}.`}`,
-    w.plan.active !== "saver", w.plan.active === "saver" ? "Conseil : Équilibré" : "Bien réglé", seg);
-  const mDesc = "C'est l'accélération de la souris : la distance parcourue dépend de la vitesse du geste. La couper rend la visée constante. Beaucoup de jeux l'ignorent déjà.";
-  row("Précision du pointeur", mDesc, !w.mouseAccel, w.mouseAccel ? "Conseil : couper" : "Bien réglé", tg(w.mouseAccel, "mouse", "Précision du pointeur", mDesc));
   return p;
 }
 
@@ -330,11 +336,19 @@ V["gaming-hw"] = async () => {
     const old = g.age != null && g.age > 180;
     const ageTxt = g.age == null ? "date inconnue" : g.age < 31 ? (g.age <= 1 ? "Récent" : `Il y a ${g.age} jours`) : `Il y a ${Math.round(g.age / 30)} mois`;
     const link = el(`<a class="hc-link" href="#"></a>`);
-    link.textContent = "Télécharger la mise à jour ↗";
-    link.onclick = (e) => { e.preventDefault(); openTool(g.vendor === "nvidia" ? "nvidia" : "amd"); };
-    hc(g.vendor === "amd" ? "Pilote AMD Adrenalin" : g.vendor === "nvidia" ? "Pilote NVIDIA" : "Pilote", gTag(ageTxt, old ? "warn" : "good"),
-      esc(g.software || g.driver || "?"), `${g.date ? `Installé le ${new Date(g.date).toLocaleDateString("fr-FR")}. ` : ""}Dernière version disponible : Non disponible (Sonde n'interroge pas le site du fabricant). Les nouveaux pilotes corrigent souvent des saccades dans les jeux récents.`,
-      ["amd", "nvidia"].includes(g.vendor) ? link : null);
+    if (isLinux()) {
+      // Debian : le pilote libre (Mesa, noyau) se met à jour avec le système.
+      link.textContent = "Voir les mises à jour de Debian ›";
+      link.onclick = (e) => { e.preventDefault(); show("updates"); };
+      hc(g.driverLabel || "Pilote", gTag(g.software ? "installé" : "Non disponible", g.software ? "good" : ""), esc(g.software || g.driver || "?"),
+        g.driverText || "Le pilote graphique se met à jour avec Debian. Les nouvelles versions de Mesa corrigent souvent des saccades dans les jeux récents.", link);
+    } else {
+      link.textContent = "Télécharger la mise à jour ↗";
+      link.onclick = (e) => { e.preventDefault(); openTool(g.vendor === "nvidia" ? "nvidia" : "amd"); };
+      hc(g.vendor === "amd" ? "Pilote AMD Adrenalin" : g.vendor === "nvidia" ? "Pilote NVIDIA" : "Pilote", gTag(ageTxt, old ? "warn" : "good"),
+        esc(g.software || g.driver || "?"), `${g.date ? `Installé le ${new Date(g.date).toLocaleDateString("fr-FR")}. ` : ""}Dernière version disponible : Non disponible (Sonde n'interroge pas le site du fabricant). Les nouveaux pilotes corrigent souvent des saccades dans les jeux récents.`,
+        ["amd", "nvidia"].includes(g.vendor) ? link : null);
+    }
     // Port PCIe : 16 voies dessinées
     const known = g.width != null && g.maxWidth != null;
     const full = known && g.width >= g.maxWidth && (g.gen == null || g.maxGen == null || g.gen >= g.maxGen);
@@ -344,10 +358,13 @@ V["gaming-hw"] = async () => {
     hc("Port PCIe", known ? gTag(full ? "Comme prévu" : `x${g.width} au lieu de x${g.maxWidth}`, full ? "good" : "warn") : gTag("Non disponible"),
       known ? `x${g.width}${g.gen ? ` · PCIe ${g.gen}.0` : ""}` : na,
       full ? "Une carte branchée en x4 au lieu de x16, ça arrive : mauvais emplacement ou carte mal enfoncée. Ici, tout est en place."
-        : known ? "La carte communique sur moins de voies qu'elle ne peut : mauvais emplacement, carte mal enfoncée, ou voies partagées avec un SSD M.2. Vérifie le manuel de la carte mère." : "Windows n'a pas donné la largeur du port.", lanes);
-    // Resizable BAR : Windows ne l'expose pas de façon fiable.
-    hc(g.vendor === "amd" ? "Smart Access Memory" : "Resizable BAR", gTag("Non disponible"), "Resizable BAR",
-      `Windows ne donne pas cette information de façon fiable. Elle se vérifie dans ${g.vendor === "amd" ? "AMD Software › Performances › Réglages" : g.vendor === "nvidia" ? "le Panneau de configuration NVIDIA › Informations système" : "le logiciel du pilote"} ou dans le BIOS.`);
+        : known ? "La carte communique sur moins de voies qu'elle ne peut : mauvais emplacement, carte mal enfoncée, ou voies partagées avec un SSD M.2. Vérifie le manuel de la carte mère." : `${isLinux() ? "Le système" : "Windows"} n'a pas donné la largeur du port.`, lanes);
+    // Resizable BAR : lisible sous Linux (taille de la fenêtre mémoire), pas de façon fiable sous Windows.
+    const rb = g.rebar;
+    hc(g.vendor === "amd" ? "Smart Access Memory" : "Resizable BAR", rb == null ? gTag("Non disponible") : gTag(rb ? "Activé" : "Désactivé", rb ? "good" : "warn"), "Resizable BAR",
+      rb == null ? `${isLinux() ? "Le système" : "Windows"} ne donne pas cette information de façon fiable. Elle se vérifie dans ${g.vendor === "amd" ? "AMD Software › Performances › Réglages" : g.vendor === "nvidia" ? "le Panneau de configuration NVIDIA › Informations système" : "le logiciel du pilote"} ou dans le BIOS.`
+        : rb ? "Le processeur accède à toute la mémoire vidéo d'un coup. Lu dans la taille de la fenêtre mémoire de la carte."
+          : "Le processeur ne voit la mémoire vidéo que par une petite fenêtre (256 Mo). L'option « Resizable BAR » ou « Above 4G Decoding » du BIOS l'active ; le gain dépend des jeux.");
   }
   v.append(gp);
 
@@ -377,14 +394,13 @@ V["gaming-hw"] = async () => {
   } else if (!d.games.length) st.append(el(`<div class="g-note">Aucun jeu trouvé. Lance un scan des disques où sont tes jeux pour qu'ils apparaissent ici.</div>`));
 
   const right = el(`<div class="hw-right"></div>`);
-  // --- Isolation du noyau
-  const hv = d.win.hvci;
-  const iso = el(`<div class="panel g-card"><div class="g-head"><div class="tile" style="background:${G("#059669", "#34d399")}">${svg(GI.shield)}</div><span class="gt">Isolation du noyau</span>${gTag(hv ? "Activée · compromis" : "Désactivée")}</div>
+  // --- Protection du système (isolation du noyau sous Windows, démarrage sécurisé sous Debian)
+  const sec = d.security;
+  const iso = el(`<div class="panel g-card"><div class="g-head"><div class="tile" style="background:${G("#059669", "#34d399")}">${svg(GI.shield)}</div><span class="gt"></span>${gTag(sec.tag)}</div>
     <p class="g-p"></p><div class="g-act"></div></div>`);
-  $(".g-p", iso).textContent = hv
-    ? "L'intégrité de la mémoire empêche un pilote malveillant de modifier le cœur de Windows. Elle coûte quelques pour cent dans certains jeux, et souvent rien. C'est une vraie protection : Sonde ne la coupe pas et ne te pousse pas à le faire."
-    : "L'intégrité de la mémoire est désactivée : un pilote malveillant pourrait modifier le cœur de Windows. Son coût en jeu est faible (quelques pour cent au plus, souvent rien). Sonde ne la change pas : c'est à toi de choisir, dans Sécurité Windows.";
-  $(".g-act", iso).append(btn("Ouvrir Sécurité Windows ↗", () => openTool("coreisolation")));
+  $(".gt", iso).textContent = sec.title;
+  $(".g-p", iso).textContent = sec.text;
+  if (sec.tool) $(".g-act", iso).append(btn(sec.button, () => openTool(sec.tool)));
   right.append(iso);
   // --- Caches de shaders : sélection et corbeille de l'app.
   const sh = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title">Caches de shaders</div><div class="sp-desc">À vider en cas de saccades ou de plantages au chargement. Les jeux les recompilent : le premier lancement sera plus long.</div></div></div><div class="rows"></div></div>`);
@@ -394,6 +410,23 @@ V["gaming-hw"] = async () => {
   right.append(sh);
   grid.append(st, right);
   v.append(grid);
+
+  // --- Debian : restes de jeux désinstallés (préfixes Proton, caches, dossiers)
+  if (d.leftovers) {
+    const KIND = { prefix: "Préfixe Proton", shader: "Cache de shaders du jeu", files: "Dossier du jeu resté sur le disque" };
+    const total = d.leftovers.reduce((a, x) => a + x.size, 0);
+    const lp = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title">Restes de jeux désinstallés</div>
+      <div class="sp-desc">Steam laisse souvent derrière lui le « préfixe » Proton d'un jeu (une petite installation de Windows, 0,5 à 1 Go), son cache de shaders, parfois son dossier. Un préfixe peut contenir des sauvegardes si le jeu ne les envoie pas dans le cloud Steam : il est alors marqué « À vérifier », avec les dossiers concernés. Tout part dans la corbeille.</div></div>
+      <div class="sp-total"><b></b><span>récupérables</span></div></div><div class="rows"></div></div>`);
+    $(".sp-total b", lp).textContent = size(total);
+    for (const x of d.leftovers) {
+      const sub = [KIND[x.kind], x.saves.length ? `sauvegardes possibles : ${x.saves.slice(0, 3).join(", ")}${x.saves.length > 3 ? "…" : ""}` : null, short(x.path)].filter(Boolean).map(esc).join(" · ");
+      $(".rows", lp).append(rowEl({ path: x.path, name: x.name, size: x.size, type: "dir", niveau: x.saves.length || x.kind === "files" ? "a_verifier" : "sur" },
+        { sub, tile: x.kind === "prefix" ? G("#7c2d12", "#f97316") : x.kind === "shader" ? G("#7c3aed", "#c084fc") : G("#334155", "#64748b") }));
+    }
+    if (!d.leftovers.length) $(".rows", lp).append(el(`<div class="empty">✓ Aucun reste de jeu désinstallé.</div>`));
+    v.append(lp);
+  }
 };
 
 // ================================================================ RÉSEAU ===
@@ -476,31 +509,40 @@ V["gaming-net"] = async () => {
   const bw = $(".bw", cards);
   const rate = (x) => `${nf1.format((x * 8) / 1e6)} Mb/s`;
   bw.innerHTML = `<div class="gc-h"><span>Bande passante utilisée</span></div><div class="gc-v">${n.rate ? `↓ ${rate(n.rate.down)} · ↑ ${rate(n.rate.up)}` : na}</div>
-    <div class="gc-d">Mesuré sur la carte réseau pendant 2 secondes. Le détail par programme : Non disponible (Windows ne le donne pas sans outil de capture).</div><div class="bw-rows"></div>`;
+    <div class="gc-d">Mesuré sur la carte réseau pendant 2 secondes. Le détail par programme : Non disponible (${isLinux() ? "le système" : "Windows"} ne le donne pas sans outil de capture).</div><div class="bw-rows"></div>`;
   const rows = $(".bw-rows", bw);
-  const wu = d.wuPause;
-  const r = el(`<div class="lrow"><div><div class="t">Windows Update</div><div class="s"></div></div><span class="a"></span></div>`);
-  $(".s", r).textContent = wu ? `En pause jusqu'au ${new Date(wu).toLocaleDateString("fr-FR")}` : "Pas en pause";
-  if (!wu) $(".a", r).append(btn("Suspendre", (b) => gApply("Suspendre Windows Update pendant 1 semaine ?",
-    "<p>Windows ne téléchargera ni n'installera de mise à jour pendant 7 jours. Les mises à jour reprennent toutes seules ensuite.</p>",
-    { id: "wupause" }, { admin: true, b, ok: "Suspendre", done: "Windows Update suspendu pendant 1 semaine. Annulable depuis le journal." }), "sm"));
-  rows.append(r);
+  // Mises à jour du système (Windows Update, ou mises à jour automatiques de Debian).
+  const upd = d.bgNow.find((x) => x.kind === "updates");
+  if (upd) {
+    const r = el(`<div class="lrow"><div><div class="t"></div><div class="s"></div></div><span class="a"></span></div>`);
+    $(".t", r).textContent = upd.name;
+    $(".s", r).textContent = upd.short || upd.desc;
+    if (upd.action) $(".a", r).append(actionBtn({ ...upd.action, label: upd.action.shortLabel || "Suspendre" }, "sm"));
+    rows.append(r);
+  }
   const steam = d.background.find((x) => x.name === "Steam");
   if (steam) rows.append(el(`<div class="lrow"><div><div class="t">Steam</div><div class="s">Ouvert. Ses téléchargements se mettent en pause depuis Steam › Téléchargements.</div></div></div>`));
 };
 
 // ================================================== CE QU'ON NE FAIT PAS ===
+const NOPES_WIN = [
+  ["Réglages TCPNoDelay et Nagle", "Sans effet : les jeux utilisent l'UDP. Ces clés du registre ne concernent que le TCP."],
+  ["Changer de DNS pour le ping", "Le DNS n'agit que sur le chargement des sites. Une fois connecté au serveur de jeu, il ne sert plus."],
+  ["« Nettoyeurs de RAM »", "Windows se sert de la mémoire libre comme cache. La vider l'oblige à tout relire depuis le disque, ce qui ralentit plutôt."],
+  ["« Mode haute priorité »", "Passer un jeu en priorité haute ne lui donne pas plus de puissance, et peut faire saccader le son, la souris ou Discord."],
+];
+const NOPES_LINUX = [
+  ["Réglages TCP « anti-lag » (sysctl)", "Sans effet : les jeux utilisent l'UDP. Les réglages tcp_* du noyau, comme tcp_low_latency, ne concernent que le TCP."],
+  ["Changer de DNS pour le ping", "Le DNS n'agit que sur le chargement des sites. Une fois connecté au serveur de jeu, il ne sert plus."],
+  ["Vider le cache mémoire (drop_caches)", "Linux se sert de la mémoire libre comme cache. La vider l'oblige à tout relire depuis le disque, ce qui ralentit plutôt."],
+  ["« nice -20 » sur le jeu", "Passer un jeu en priorité maximale ne lui donne pas plus de puissance, et peut faire saccader le son (PipeWire), la souris ou Discord. GameMode le fait proprement."],
+];
 V["gaming-no"] = () => {
   const v = $("#view-gaming-no");
   v.innerHTML = "";
   v.append(head("Ce qu'on ne fait pas, et pourquoi", "Des « optimisations » qu'on trouve partout et que Sonde refuse d'appliquer."));
   const grid = el(`<div class="nope-grid"></div>`);
-  for (const [t, d] of [
-    ["Réglages TCPNoDelay et Nagle", "Sans effet : les jeux utilisent l'UDP. Ces clés du registre ne concernent que le TCP."],
-    ["Changer de DNS pour le ping", "Le DNS n'agit que sur le chargement des sites. Une fois connecté au serveur de jeu, il ne sert plus."],
-    ["« Nettoyeurs de RAM »", "Windows se sert de la mémoire libre comme cache. La vider l'oblige à tout relire depuis le disque, ce qui ralentit plutôt."],
-    ["« Mode haute priorité »", "Passer un jeu en priorité haute ne lui donne pas plus de puissance, et peut faire saccader le son, la souris ou Discord."],
-  ]) {
+  for (const [t, d] of (isLinux() ? NOPES_LINUX : NOPES_WIN)) {
     const c = el(`<div class="panel nope"><div class="nope-i">${svg(GI.x)}</div><div><div class="t"></div><div class="d"></div></div></div>`);
     $(".t", c).textContent = t; $(".d", c).textContent = d;
     grid.append(c);
