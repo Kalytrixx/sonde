@@ -1,0 +1,16 @@
+# Dépendances et constructions
+node_modules/
+dist/
+
+# Données personnelles : scans, notes de l'IA, journal, historique, réglages
+data/
+
+# Divers
+*.log
+.claude/
+Thumbs.db
+desktop.ini
+release/
+
+# Maquettes et captures de travail
+design/

@@ -1,0 +1,82 @@
+/* Sonde — effets d'animation et de navigation, d'après la maquette « Sonde v2 ».
+   Tout est coupé par le réglage « Animations » (classe no-fx sur <html>)
+   et par le réglage « réduire les animations » de Windows. */
+
+/* Changement d'ambiance : les couleurs glissent en 0,9 s. */
+@property --a1 { syntax: '<color>'; inherits: true; initial-value: #7c5cff; }
+@property --a2 { syntax: '<color>'; inherits: true; initial-value: #c455ff; }
+@property --a3 { syntax: '<color>'; inherits: true; initial-value: #ff5fa2; }
+@property --gl1 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --gl2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --gl3 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --sh { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --soft { syntax: '<color>'; inherits: true; initial-value: #c4b5fd; }
+body { transition: --a1 .9s, --a2 .9s, --a3 .9s, --gl1 .9s, --gl2 .9s, --gl3 .9s, --sh .9s, --soft .9s; }
+
+@keyframes drift1 { 0% { transform: translate(0, 0); } 100% { transform: translate(260px, 140px); } }
+@keyframes drift2 { 0% { transform: translate(0, 0); } 100% { transform: translate(-320px, -180px); } }
+@keyframes drift3 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(180px, 200px) scale(1.2); } }
+@keyframes hzmove { from { left: 0; } to { left: calc(100% - 28px); } }
+
+/* ------------------------------------------------------------------- fond */
+/* Trois halos flous aux couleurs de l'ambiance, qui dérivent lentement. */
+body { background: var(--night); }
+.bg-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-fx i { position: absolute; border-radius: 50%; }
+.bg-fx .b1 { left: -30%; top: -60%; width: 1300px; height: 1300px; background: radial-gradient(circle, var(--gl1), transparent 65%); animation: drift1 26s ease-in-out infinite alternate; }
+.bg-fx .b2 { left: 45%; top: 30%; width: 1200px; height: 1200px; background: radial-gradient(circle, var(--gl2), transparent 65%); animation: drift2 32s ease-in-out infinite alternate; }
+.bg-fx .b3 { left: 25%; top: 0; width: 900px; height: 900px; background: radial-gradient(circle, var(--gl3), transparent 65%); animation: drift3 22s ease-in-out infinite alternate; }
+.app { position: relative; z-index: 1; }
+
+/* ----------------------------------------------------- barre de titre */
+/* Logo : faisceau radar et halo qui pulse pendant un scan. */
+.tb-logo { position: relative; width: 18px; height: 18px; flex: none; }
+.tb-logo svg { display: block; position: relative; }
+.tb-logo .tb-sweep, .tb-logo .tb-glow { position: absolute; border-radius: 50%; display: none; pointer-events: none; }
+.tb-logo .tb-sweep { inset: 2px; background: conic-gradient(from 0deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 28%, rgba(255, 255, 255, 0)); animation: sweep 1.1s linear infinite; }
+.tb-logo .tb-glow { inset: -6px; background: radial-gradient(circle, var(--sh), transparent 70%); animation: pulse 1.4s ease-in-out infinite; }
+.tb-scan { display: none; font-size: 11px; color: var(--soft); padding: 2px 9px; border-radius: 20px; background: rgba(255, 255, 255, .07); }
+body.scanning .tb-logo .tb-sweep, body.scanning .tb-logo .tb-glow { display: block; }
+body.scanning .tb-scan { display: inline-block; }
+
+/* ----------------------------------------------------- barre latérale */
+/* Un fond unique glisse vers l'élément actif. */
+#nav { position: relative; }
+#nav a { position: relative; z-index: 1; transition: background .25s, box-shadow .25s, color .15s; }
+#nav a:hover { background: rgba(255, 255, 255, .05); box-shadow: 0 0 24px -6px var(--sh), inset 0 0 0 1px rgba(255, 255, 255, .06); }
+#nav a.active, #nav a.active:hover { background: transparent; box-shadow: none; }
+.nav-glider {
+  position: absolute; left: 0; right: 0; top: 0; height: 42px; border-radius: 11px; z-index: 0; pointer-events: none;
+  background: rgba(255, 255, 255, .09); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 4px 16px rgba(0, 0, 0, .2), 0 0 26px -8px var(--sh);
+  transition: top .45s cubic-bezier(.34, 1.35, .64, 1);
+}
+.nav-glider.still { transition: none; }
+
+/* --------------------------------------------------------- interrupteurs */
+.switch { transition: background .25s; }
+.switch::after { transition: transform .4s cubic-bezier(.34, 1.8, .64, 1); }
+
+/* -------------------------------------------- boutons principaux (dégradé) */
+/* Reflet lumineux qui traverse le bouton au survol ; invisible au repos. */
+.btn.primary {
+  background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .4) 50%, transparent 65%), var(--grad);
+  background-size: 250% 100%, 100% 100%; background-position: 130% 0, 0 0; background-repeat: no-repeat;
+  background-origin: border-box; background-clip: border-box;
+}
+
+/* L'entrée des pages est animée en JavaScript (fx.js). */
+html.fx .view.active { animation: none; }
+html.fx .tm-cell { animation: none; }
+html.fx .palette.open .pal-box { animation: none; }
+
+/* ---------------------------------------------------- animations coupées */
+html.no-fx *, html.no-fx *::before, html.no-fx *::after {
+  animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important;
+}
+/* Les indicateurs d'activité restent animés : ils disent que quelque chose travaille. */
+html.no-fx .progress span, html.no-fx .sprog-bar span.indet { animation-duration: 1.4s !important; }
+html.no-fx .working::after { animation-duration: 1.2s !important; }
+html.no-fx .ai-pill.busy .dot, html.no-fx .zone.run i { animation-duration: 1.2s !important; }
+html.no-fx .tb-logo .tb-sweep { animation-duration: 1.1s !important; }
+html.no-fx .tb-logo .tb-glow { animation-duration: 1.4s !important; }
+html.no-fx .sprog-bar span, html.no-fx .meter > span { transition-duration: .3s !important; }

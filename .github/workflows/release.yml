@@ -1,0 +1,144 @@
+# Publier une version de Sonde.
+#
+# Déclenchement : pousser un tag « v » + la version de package.json, par exemple
+#   git tag v1.1.0 && git push origin v1.1.0
+# Résultat : une Release GitHub en BROUILLON avec l'installateur Windows, le
+# paquet Debian et les fichiers latest*.yml lus par la mise à jour intégrée.
+# Rien n'est visible des utilisateurs tant que le brouillon n'est pas publié
+# à la main sur GitHub.
+#
+# Signature Windows (SignPath Foundation) : activée dès que la variable du
+# dépôt SIGNPATH_ORGANIZATION_ID existe (Settings › Secrets and variables ›
+# Actions), avec SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG et le secret
+# SIGNPATH_API_TOKEN. Sans elle, l'installateur est construit sans signature.
+
+name: Publier une version
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      SIGNPATH: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Vérifier que le tag correspond à la version
+        shell: bash
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          [ "$v" = "$GITHUB_REF_NAME" ] || { echo "Le tag $GITHUB_REF_NAME ne correspond pas à la version $v de package.json"; exit 1; }
+
+      # --- Sans signature
+      - name: Construire l'installateur
+        if: env.SIGNPATH != 'true'
+        run: npx electron-builder --win nsis --publish never
+
+      # --- Avec SignPath : on signe d'abord l'application (Sonde.exe et ses
+      # fichiers), on construit l'installateur autour, puis on signe l'installateur.
+      - name: Construire l'application
+        if: env.SIGNPATH == 'true'
+        run: npx electron-builder --win dir --publish never
+      - name: Envoyer l'application à signer
+        if: env.SIGNPATH == 'true'
+        id: app-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: release/win-unpacked
+      - name: Signer l'application
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.app-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: release/win-signed
+      - name: Construire l'installateur autour de l'application signée
+        if: env.SIGNPATH == 'true'
+        run: npx electron-builder --win nsis --prepackaged release/win-signed --publish never
+      - name: Envoyer l'installateur à signer
+        if: env.SIGNPATH == 'true'
+        id: setup-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: release/Sonde-Setup-*.exe
+      - name: Signer l'installateur
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.setup-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: release/setup-signed
+      - name: Remplacer par l'installateur signé et mettre à jour latest.yml
+        if: env.SIGNPATH == 'true'
+        shell: bash
+        run: |
+          cp -f release/setup-signed/*.exe release/
+          node build/update-latest-yml.js release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          if-no-files-found: error
+          path: |
+            release/Sonde-Setup-*.exe
+            release/Sonde-Setup-*.exe.blockmap
+            release/latest.yml
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Construire le paquet Debian
+        run: npx electron-builder --linux deb --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          if-no-files-found: error
+          path: |
+            release/sonde_*_amd64.deb
+            release/latest-linux.yml
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{windows,linux}"
+          path: out
+          merge-multiple: true
+      - name: Créer la Release en brouillon
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la out
+          gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Sonde ${GITHUB_REF_NAME#v}"

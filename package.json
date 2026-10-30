@@ -1,0 +1,142 @@
+{
+  "name": "sonde",
+  "productName": "Sonde",
+  "desktopName": "sonde.desktop",
+  "version": "1.0.0",
+  "description": "Nettoyeur et optimiseur de disque piloté par une IA locale (GPT-OSS via Ollama), pour Windows et Debian",
+  "author": "0xKernelBreaker",
+  "license": "MIT",
+  "homepage": "https://github.com/0xKernelBreaker/sonde",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xKernelBreaker/sonde.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0xKernelBreaker/sonde/issues"
+  },
+  "updates": {
+    "provider": "github",
+    "owner": "0xKernelBreaker",
+    "repo": "sonde"
+  },
+  "main": "electron/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "serve": "node server.js --open",
+    "icon": "powershell -ExecutionPolicy Bypass -File build/make-icon.ps1",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --win --dir",
+    "dist:linux": "electron-builder --linux deb"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "electron-updater": "^6.8.11",
+    "marked": "^14.1.4"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "io.github.sonde.app",
+    "productName": "Sonde",
+    "copyright": "Copyright © 2026 0xKernelBreaker — Licence MIT",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**",
+      "server.js",
+      "lib/**",
+      "public/**",
+      "build/icon.png",
+      "package.json",
+      "!data/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "Sonde-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sonde",
+      "runAfterFinish": true,
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036",
+      "uninstallDisplayName": "Sonde",
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "System;Utility",
+      "executableName": "sonde",
+      "maintainer": "0xKernelBreaker <171289552+0xKernelBreaker@users.noreply.github.com>",
+      "synopsis": "Nettoyeur de disque avec IA locale",
+      "description": "Nettoyer et comprendre son disque avec une IA locale (GPT-OSS via Ollama). Tout passe par la corbeille.",
+      "artifactName": "sonde_${version}_amd64.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "Sonde",
+          "Keywords": "disque;nettoyage;espace;ia;ollama;"
+        }
+      },
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0t64 | libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0t64 | libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "pkexec | policykit-1",
+        "libglib2.0-bin",
+        "iproute2"
+      ],
+      "recommends": [
+        "libnotify-bin",
+        "pciutils",
+        "network-manager",
+        "curl"
+      ],
+      "priority": "optional"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "0xKernelBreaker",
+        "repo": "sonde",
+        "releaseType": "draft"
+      }
+    ]
+  }
+}

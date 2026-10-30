@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sonde</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="pages.css">
+  <link rel="stylesheet" href="fx.css">
+</head>
+<body data-amb="violet">
+  <!-- Dégradés partagés : logo et arc de progression du scan -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="sg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" style="stop-color:var(--a1)"/><stop offset=".55" style="stop-color:var(--a2)"/><stop offset="1" style="stop-color:var(--a3)"/>
+      </linearGradient>
+      <radialGradient id="sgl" cx=".3" cy=".2" r=".9">
+        <stop offset="0" style="stop-color:#fff;stop-opacity:.35"/><stop offset=".5" style="stop-color:#fff;stop-opacity:0"/>
+      </radialGradient>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <!-- Barre de titre : déplace la fenêtre ; les boutons du système sont à droite -->
+    <header class="titlebar">
+      <div class="tb-brand">
+        <span class="tb-logo"><i class="tb-glow"></i><svg viewBox="0 0 64 64" width="18" height="18"><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#sg)"/><circle cx="32" cy="32" r="17" fill="none" stroke="#fff" stroke-width="7"/><circle cx="45" cy="17" r="8" fill="#fff"/></svg><i class="tb-sweep"></i></span>
+        <span>Sonde</span><span class="tb-scan">Scan en cours…</span>
+      </div>
+      <button class="tb-ask" id="askBtn" title="Demande à Sonde (Ctrl K)">
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+        <span>Demande à Sonde…</span><span class="kbd">Ctrl K</span>
+      </button>
+      <div></div>
+    </header>
+
+    <div class="app-body">
+      <aside class="sidebar">
+        <nav id="nav"></nav>
+        <div class="side-spacer"></div>
+        <div class="disk">
+          <div class="disk-top"><span id="diskName">Disque</span><span id="diskPct">–</span></div>
+          <div class="meter"><span id="diskBar" style="width:0"></span></div>
+          <div class="disk-free" id="diskFree">Pas encore de scan</div>
+          <div class="ai-pill" id="aiPill" title="Préparer ou changer l'IA"><span class="dot"></span><span id="aiText">IA…</span></div>
+          <div class="amb-pick" id="ambPick"><span>Ambiance</span>
+            <button data-amb="violet" title="Violet" style="background:linear-gradient(135deg,#7c5cff,#ff5fa2)"></button>
+            <button data-amb="aurore" title="Aurore" style="background:linear-gradient(135deg,#2563eb,#5eead4)"></button>
+            <button data-amb="braise" title="Braise" style="background:linear-gradient(135deg,#f43f5e,#fbbf24)"></button>
+          </div>
+          <button class="ver-btn" id="verBtn" title="Paramètres et mises à jour"><span id="verText">Sonde</span><span class="ver-new">mise à jour</span></button>
+        </div>
+      </aside>
+
+      <main>
+        <div class="subnav"><div class="segs" id="subnav"></div></div>
+        <div class="scroller">
+          <section class="view" id="view-home"></section>
+          <section class="view" id="view-analyse"></section>
+          <section class="view" id="view-telescope"></section>
+          <section class="view" id="view-search"></section>
+          <section class="view" id="view-bigfiles"></section>
+          <section class="view" id="view-dups"></section>
+          <section class="view" id="view-clean"></section>
+          <section class="view" id="view-apps"></section>
+          <section class="view" id="view-active"></section>
+          <section class="view" id="view-updates"></section>
+          <section class="view" id="view-services"></section>
+          <section class="view" id="view-drivers"></section>
+          <section class="view" id="view-wincleanup"></section>
+          <section class="view" id="view-security"></section>
+          <section class="view" id="view-network"></section>
+          <section class="view" id="view-gaming"></section>
+          <section class="view" id="view-gaming-hw"></section>
+          <section class="view" id="view-gaming-net"></section>
+          <section class="view" id="view-gaming-no"></section>
+          <section class="view" id="view-history"></section>
+          <section class="view" id="view-journal"></section>
+          <section class="view" id="view-settings"></section>
+          <section class="view" id="view-set-ai"></section>
+          <section class="view" id="view-set-update"></section>
+          <section class="view" id="view-set-privacy"></section>
+        </div>
+
+        <!-- N'apparaît que lorsque quelque chose est sélectionné -->
+        <footer class="selbar" id="selbar">
+          <span class="sel-info"><span id="selCount">0</span> <span id="selWord">élément</span> · <b id="selSize">0 Go</b></span>
+          <button class="btn" id="btnReview">Passer en revue</button>
+          <button class="btn primary" id="btnTrash">Mettre à la corbeille</button>
+          <button class="icon-btn" id="btnClearSel" title="Vider la sélection">✕</button>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <!-- « Demande à Sonde » : questions à l'IA sur le disque -->
+  <div class="palette" id="palette">
+    <div class="pal-box">
+      <form class="pal-in" id="palForm">
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+        <input id="palInput" autocomplete="off" placeholder="Pose une question sur ton disque…">
+        <span class="kbd">Échap</span>
+      </form>
+      <div class="pal-body" id="palBody"></div>
+      <div class="pal-foot"><span id="palNote">L'IA explore le scan pour répondre. Rien ne quitte ton PC.</span><button class="link-btn" id="palReset">Nouvelle conversation</button></div>
+    </div>
+  </div>
+
+  <!-- Explication d'un élément par l'IA -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div><div class="drawer-kicker" id="drawerKicker">✦ L'IA explique</div><div class="drawer-title" id="drawerTitle"></div></div>
+      <button class="icon-btn" id="drawerClose">✕</button>
+    </div>
+    <div class="md" id="drawerBody"></div>
+  </div>
+
+  <!-- Revue de la sélection -->
+  <div class="modal" id="modal">
+    <div class="modal-box">
+      <div class="modal-head"><h2>Passer en revue la sélection</h2><button class="icon-btn" id="modalClose">✕</button></div>
+      <div class="modal-list" id="modalList"></div>
+      <div class="bin-status" id="binStatus"></div>
+      <div class="modal-foot">
+        <div class="muted" id="trashNote">Tout part dans la corbeille : récupérable tant que tu ne la vides pas.</div>
+        <button class="btn primary" id="btnConfirm">Mettre à la corbeille</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation d'une action système -->
+  <div class="modal" id="confirm">
+    <div class="modal-box confirm-box">
+      <div class="modal-head"><h2 id="confirmTitle"></h2><button class="icon-btn" id="confirmClose">✕</button></div>
+      <div class="confirm-body" id="confirmBody"></div>
+      <div class="modal-foot">
+        <div class="muted" id="confirmNote"></div>
+        <div style="display:flex;gap:8px"><button class="btn" id="confirmNo">Annuler</button><button class="btn primary" id="confirmYes">Confirmer</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Réglages de l'IA : Ollama sur ce PC ou IA en ligne (premier lancement, ou clic sur l'état de l'IA) -->
+  <div class="modal" id="setup">
+    <div class="modal-box setup-box">
+      <div class="setup-head">
+        <svg viewBox="0 0 64 64" width="52" height="52" style="flex:none;filter:drop-shadow(0 8px 20px var(--sh))"><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#sg)"/><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#sgl)"/><circle cx="32" cy="32" r="19" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width="3.2"/><circle cx="32" cy="32" r="10" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="3.2"/><path d="M32 32 L32 13 A19 19 0 0 1 48.45 22.5 Z" fill="#fff" fill-opacity=".28"/><circle cx="32" cy="32" r="3.2" fill="#fff"/><circle cx="44.2" cy="17.4" r="4" fill="#fff"/></svg>
+        <div>
+          <h2>L'IA de Sonde</h2>
+          <div class="muted" id="setupIntro">Le modèle tourne sur ton PC grâce à Ollama : rien n'est envoyé sur Internet.</div>
+        </div>
+      </div>
+      <div class="segs setup-tabs" id="setupTabs"></div>
+      <div id="setupBody"></div>
+      <div class="modal-foot">
+        <button class="link-btn" id="setupSkip">Continuer sans IA</button>
+        <button class="btn primary" id="setupDone" disabled>Commencer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/vendor/d3.js"></script>
+  <script src="/vendor/marked.js"></script>
+  <script src="app.js"></script>
+  <script src="fx.js"></script>
+  <script src="system.js"></script>
+  <script src="network.js"></script>
+  <script src="setup.js"></script>
+  <script src="update.js"></script>
+  <script src="settings.js"></script>
+  <script src="gaming.js"></script>
+</body>
+</html>
