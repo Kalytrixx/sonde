@@ -275,6 +275,8 @@ async function refreshStatus() {
     const t = $("#trashNote");
     if (t) t.textContent = `Tout part dans ${OS.trash} : récupérable tant que tu ne la vides pas.`;
   }
+  // Windows : mises à jour des applications (winget) dans la section Applications.
+  if (state.status?.platform === "win32" && !SECTIONS.apps.views.some(([v]) => v === "appupdates")) SECTIONS.apps.views.push(["appupdates", "Mises à jour"]);
   const s = state.status;
   const pill = $("#aiPill");
   pill.className = "ai-pill";

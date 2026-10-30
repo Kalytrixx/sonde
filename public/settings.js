@@ -129,6 +129,36 @@ V.settings = async () => {
   grid.append(start, watch);
   v.append(grid);
 
+  // Windows : points de restauration avant les changements du système.
+  if (!isLinux()) {
+    const rp = spanel("Points de restauration", "Un point de restauration photographie les réglages et les fichiers du système (pas tes documents). Il permet de revenir en arrière si un changement tourne mal.");
+    v.append(rp);
+    const drawRp = async () => {
+      let r;
+      try { r = await api("/api/restore"); } catch { rp.remove(); return; }
+      const b = $(".sp-body", rp);
+      b.innerHTML = "";
+      b.append(srow({ icon: ICON.shield, tile: G("#059669", "#34d399"), title: "Protection du système",
+        desc: r.protection ? "Active sur le disque de Windows." : "Désactivée : Windows ne garde aucun point de restauration.",
+        control: r.protection ? null : btn("Activer", async (x) => {
+          if (!await confirmBox({ title: "Activer la protection du système ?", admin: true, ok: "Activer", body: "Windows réserve un peu de place sur le disque de Windows pour les points de restauration (il efface les plus anciens quand elle est pleine)." })) return;
+          if (await act(x, () => api("/api/restore", { action: "enable" }), "…")) { toast("Protection activée. Annulable depuis le journal."); drawRp(); }
+        }, "primary") }));
+      b.append(srow({ icon: SET_ICON.refresh, tile: G("#0d9488", "#2dd4bf"), title: "Un point avant chaque changement du système",
+        desc: `Créé dans la même fenêtre d'autorisation que le changement, au plus un toutes les 12 heures.${r.last ? ` Dernier : ${ago(r.last)}.` : ""}`,
+        control: switchEl(r.auto && r.protection, async (on, s) => {
+          if (on && !r.protection) return toast("Active d'abord la protection du système.");
+          if (await act(null, () => api("/api/restore", { action: "auto", on }))) s.classList.toggle("on", on);
+        }, !r.protection) }));
+      b.append(srow({ icon: SET_ICON.check, tile: G("#475569", "#64748b"), title: "Créer un point maintenant", desc: "Utile juste avant d'installer un pilote ou un logiciel inconnu.",
+        control: group(btn("Créer", async (x) => {
+          if (!r.protection) return toast("Active d'abord la protection du système.");
+          if (await act(x, () => api("/api/restore", { action: "create" }), "Création… (jusqu'à une minute)")) { toast("Point de restauration créé."); drawRp(); }
+        }), btn("Restaurer…", () => openTool("restore"))) }));
+    };
+    drawRp();
+  }
+
   // Données de Sonde : poids, dossier, une ligne par type de données.
   const data = el(`<div class="panel spanel"><div class="sp-head"><div><div class="sp-title">Données de Sonde</div>
       <div class="sp-desc">Scans, notes de l'IA, journal et réglages : uniquement sur ton PC. Les effacer ne touche jamais à tes fichiers.</div></div>
@@ -339,6 +369,8 @@ V["set-privacy"] = async () => {
       { when: "Mesa récent, pilote NVIDIA, Timeshift (pages Pilotes et Mises à jour)", to: "deb.debian.org", what: "Téléchargement des paquets par apt, comme toute mise à jour de Debian.", active: false },
     ] : [
       { when: "Mises à jour de pilotes (page Pilotes)", to: "Windows Update (Microsoft)", what: "Recherche faite par Windows lui-même.", active: false },
+      { when: "Mises à jour des applications (page Applications)", to: "Catalogue winget (Microsoft), puis le site de chaque éditeur", what: "La liste de tes programmes est comparée au catalogue par winget, l'outil de Microsoft ; les mises à jour se téléchargent chez l'éditeur.", active: false },
+      { when: "Réparer Windows Update (page Nettoyage Windows)", to: "Windows Update (Microsoft)", what: "DISM télécharge les fichiers de Windows abîmés, comme Windows lui-même.", active: false },
       { when: "Signatures antivirus (page Sécurité)", to: "Microsoft Defender", what: "Mise à jour faite par Defender lui-même.", active: false },
     ]),
     { when: "Liens « Créer une clé », site AMD…", to: "ton navigateur", what: "La page s'ouvre dans ton navigateur ; Sonde n'y envoie rien.", active: false },

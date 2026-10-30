@@ -444,9 +444,44 @@ V.apps = async (refresh = false) => {
   v.append(head("Programmes installés", isLinux()
     ? `${apps.length} programmes : applications, Flatpak, et gros paquets installés à la main. La désinstallation passe par apt ou Flatpak, avec ton mot de passe, et s'annule depuis le journal.`
     : `${apps.length} programmes. La taille et la dernière utilisation viennent du scan quand le dossier du programme y figure. La désinstallation lance le désinstalleur officiel du programme.`,
-    q, kind, sort, btn("Actualiser", () => V.apps(true))));
+    q, kind, sort, isLinux() ? null : btn("Applis préinstallées", () => bloatPanel()), btn("Actualiser", () => V.apps(true))));
   const leftovers = el(`<div></div>`), box = el(`<div></div>`);
   v.append(leftovers, box);
+
+  // Windows : applications installées d'office, cochées d'après une liste prudente.
+  async function bloatPanel() {
+    leftovers.innerHTML = loading("Recherche des applications préinstallées");
+    let list;
+    try { list = await api("/api/apps/bloat"); } catch (e) { leftovers.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    leftovers.innerHTML = "";
+    const picked = new Set(list.filter((x) => x.preset).map((x) => x.key));
+    const p = el(`<div class="panel" style="margin-bottom:16px"><div class="panel-title"><span>Applications préinstallées (${list.length})</span><span class="toolbar" style="margin:0"></span></div>
+      <p class="hint">Installées d'office par Windows ou par promotion. La liste est prudente : la Calculatrice, les Photos, le Store, Paint, le Bloc-notes, le Terminal et tout ce qui sert aux jeux Xbox n'y figurent jamais. Elles se réinstallent depuis le Microsoft Store.</p><div class="opt-list"></div></div>`);
+    const go = btn("", async (b) => {
+      const chosen = list.filter((x) => picked.has(x.key));
+      if (!chosen.length) return;
+      if (!await confirmBox({ title: `Désinstaller ${chosen.length} application${chosen.length > 1 ? "s" : ""} ?`, danger: true, ok: "Désinstaller",
+        body: `<ul>${chosen.map((x) => `<li>${esc(x.name)}</li>`).join("")}</ul><p>Elles se réinstallent depuis le Microsoft Store si besoin.</p>` })) return;
+      let n = 0;
+      for (const x of chosen) if (await act(b, () => api("/api/apps/uninstall", { key: x.key }), `${++n} / ${chosen.length}…`)) apps = apps.filter((a) => a.key !== x.key);
+      toast(`${chosen.length} application${chosen.length > 1 ? "s" : ""} désinstallée${chosen.length > 1 ? "s" : ""}.`, 6000);
+      leftovers.innerHTML = "";
+      render();
+    }, "primary");
+    const label = () => { go.textContent = picked.size ? `Désinstaller ${picked.size}` : "Rien de coché"; go.disabled = !picked.size; };
+    $(".toolbar", p).append(go, iconBtn("✕", "Fermer", () => { leftovers.innerHTML = ""; }));
+    for (const x of list) {
+      const o = el(`<div class="opt chk"><button class="check ${picked.has(x.key) ? "on" : ""}"></button><div style="min-width:0"><div class="on-name"></div><div class="on-why"></div></div><span></span><span class="rsize"></span></div>`);
+      $(".on-name", o).textContent = x.name;
+      $(".on-why", o).textContent = x.why;
+      $(".rsize", o).textContent = x.size ? size(x.size) : "";
+      o.onclick = () => { const on = !picked.has(x.key); on ? picked.add(x.key) : picked.delete(x.key); $(".check", o).classList.toggle("on", on); label(); };
+      $(".opt-list", p).append(o);
+    }
+    if (!list.length) $(".opt-list", p).append(el(`<div class="empty">✓ Aucune application préinstallée inutile.</div>`));
+    label();
+    leftovers.append(p);
+  }
   const pending = new Set();   // programmes dont on a lancé la désinstallation
 
   const render = () => {
@@ -733,22 +768,32 @@ function renderSvcAll(body, d) {
 
 function renderPrivacy(body, d) {
   body.innerHTML = "";
-  body.append(el(`<p class="hint">${isLinux() ? "Réglages de confidentialité de GNOME pour ton compte, sans mot de passe. Désactivé = moins de traces et rien d'envoyé." : "Réglages de ton compte, sans droits administrateur. Désactivé = moins de suivi et de publicités."}</p>`));
-  const cards = el(`<div class="cards"></div>`);
-  for (const p of d.privacy) {
-    const c = el(`<div class="card"><div class="body"><div class="title"></div><div class="why"></div></div></div>`);
-    $(".title", c).textContent = p.label;
-    $(".why", c).textContent = p.desc;
-    c.prepend(switchEl(p.on, async (on, sw) => {
-      if (await act(null, () => api("/api/privacy/set", { ids: [p.id], on }))) { p.on = on; sw.classList.toggle("on", on); toast(`${p.label} : ${on ? "activé" : "désactivé"}.`); }
-    }));
-    cards.append(c);
+  // Deux groupes sous Windows : vie privée du compte, publicités et IA de Windows 11.
+  const GROUPS = [
+    ["privacy", null, isLinux() ? "Réglages de confidentialité de GNOME pour ton compte, sans mot de passe. Désactivé = moins de traces et rien d'envoyé." : "Réglages de ton compte, sans droits administrateur. Désactivé = moins de suivi et de publicités."],
+    ["ads", "Publicités et IA de Windows", "Ce que Windows 11 pousse sans qu'on le demande : recommandations, promotions, Bing, Copilot. Désactivé = Windows se tait. Certains changements s'appliquent au prochain redémarrage de l'Explorateur ou de la session."],
+  ];
+  for (const [g, title, hint] of GROUPS) {
+    const items = d.privacy.filter((p) => (p.group || "privacy") === g);
+    if (!items.length) continue;
+    if (title) body.append(el(`<div class="section-title">${esc(title)}</div>`));
+    body.append(el(`<p class="hint">${esc(hint)}</p>`));
+    const cards = el(`<div class="cards"></div>`);
+    for (const p of items) {
+      const c = el(`<div class="card"><div class="body"><div class="title"></div><div class="why"></div></div></div>`);
+      $(".title", c).innerHTML = `${esc(p.label)}${p.admin ? ` <span class="tag admin">administrateur</span>` : ""}`;
+      $(".why", c).textContent = p.desc;
+      c.prepend(switchEl(p.on, async (on, sw) => {
+        if (await act(null, () => api("/api/privacy/set", { ids: [p.id], on }))) { p.on = on; sw.classList.toggle("on", on); toast(`${p.label} : ${on ? "activé" : "désactivé"}. Annulable depuis le journal.`); }
+      }));
+      cards.append(c);
+    }
+    body.append(cards);
+    const allOff = items.filter((p) => p.on);
+    if (allOff.length) body.append(bar(12, btn(`Tout désactiver (${allOff.length})`, async (b) => {
+      if (await act(b, () => api("/api/privacy/set", { ids: allOff.map((p) => p.id), on: false }))) { toast("Réglages désactivés. Annulable depuis le journal."); V.services(2); }
+    }, "primary")));
   }
-  body.append(cards);
-  const allOff = d.privacy.filter((p) => p.on);
-  if (allOff.length) body.append(bar(12, btn(`Tout désactiver (${allOff.length})`, async (b) => {
-    if (await act(b, () => api("/api/privacy/set", { ids: allOff.map((p) => p.id), on: false }))) { toast("Réglages désactivés. Annulable depuis le journal."); V.services(2); }
-  }, "primary")));
   body.append(bar(12, btn(isLinux() ? "Paramètres de confidentialité" : "Paramètres de confidentialité de Windows", () => openTool("privacy"))));
 }
 
@@ -782,7 +827,7 @@ V.drivers = async () => {
   if (!d.errors.length) cards.append(el(`<div class="panel muted">✓ ${isLinux() ? "Aucun périphérique sans pilote ni firmware manquant." : "Aucun périphérique en erreur."}</div>`));
   if (isLinux() && d.logReadable === false) cards.append(el(`<p class="hint">Le journal du noyau n'est pas lisible par ton compte : les firmwares manquants ne peuvent pas être détectés (ajoute ton compte au groupe « adm »).</p>`));
   v.append(cards);
-  if (isLinux()) linuxHardware(v, d);
+  hardwareSections(v, d);
 
   const upTitle = el(`<div class="section-title"><span>${isLinux() ? "Mises à jour du noyau et des firmwares" : "Mises à jour de pilotes (Windows Update)"}</span><span class="toolbar" style="margin:0"></span></div>`);
   const upBox = el(`<div></div>`);
@@ -814,8 +859,25 @@ V.drivers = async () => {
   ], d.drivers));
 };
 
-// Debian : pilote graphique pour jouer, santé des disques, batterie.
-function linuxHardware(v, d) {
+// Pilote graphique pour jouer (Debian), écrans bleus (Windows), santé des disques, batterie.
+function hardwareSections(v, d) {
+  // Écrans bleus et arrêts brutaux des 6 derniers mois, expliqués par l'IA.
+  if (d.crashes) {
+    const blue = d.crashes.filter((c) => c.kind === "bugcheck").length, power = d.crashes.length - blue;
+    const ct = el(`<div class="section-title"><span>Écrans bleus et arrêts brutaux (6 mois)</span><span class="toolbar" style="margin:0"></span></div>`);
+    v.append(ct);
+    if (d.crashes.length) $(".toolbar", ct).append(btn(`Comprendre la cause (${aiName()})`, () => askAI("crash", {
+      plantages: d.crashes.slice(0, 15).map((c) => ({ date: new Date(c.at).toLocaleString("fr-FR"), type: c.kind === "bugcheck" ? "écran bleu" : "arrêt brutal sans écran bleu", code: c.code, nom: c.name, sens: c.meaning })),
+      pilotes_installes_recemment: d.recentDrivers.slice(0, 15).map((x) => `${new Date(x.at).toLocaleDateString("fr-FR")} : ${x.text}`),
+      cartes_graphiques: d.drivers.filter((x) => x.cls === "DISPLAY").map((x) => `${x.name} (pilote ${x.version}, ${x.date || "date inconnue"})`),
+    }, "Écrans bleus et arrêts brutaux"), "primary"));
+    v.append(el(`<p class="hint">${d.crashes.length ? `${blue} écran${blue > 1 ? "s" : ""} bleu${blue > 1 ? "s" : ""} et ${power} ${power > 1 ? "arrêts brutaux" : "arrêt brutal"} sans écran bleu. Un arrêt brutal vient d'une coupure de courant, d'un appui long sur le bouton ou d'un blocage complet ; s'il revient souvent, pense à l'alimentation.` : "✓ Aucun écran bleu ni arrêt brutal depuis 6 mois."}</p>`));
+    if (d.crashes.length) v.append(table([
+      { label: "Date", render: (c) => esc(new Date(c.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })) },
+      { label: "", render: (c) => (c.kind === "bugcheck" ? `<span class="tag bad">écran bleu</span>` : `<span class="tag warn">arrêt brutal</span>`) },
+      { label: "Cause", render: (c) => (c.kind === "bugcheck" ? `<div class="t">${esc(c.name || c.code)}</div><div class="s">${esc(c.meaning || "")}${c.name ? ` · ${esc(c.code)}` : ""}</div>` : `<span class="muted">pas de code : coupure, bouton ou blocage</span>`) },
+    ], d.crashes.slice(0, 12)));
+  }
   if (d.gpuAssist?.length) {
     v.append(el(`<div class="section-title">Pilote graphique pour jouer</div>`));
     const cards = el(`<div class="cards"></div>`);
@@ -847,7 +909,12 @@ function linuxHardware(v, d) {
       { label: "En marche", num: true, render: (x) => (x.hours != null ? `${nf0.format(x.hours)} h` : "–") },
       { label: "Usure", num: true, render: (x) => (x.wear != null ? `${x.wear} %` : "–") },
     ], d.disks, { empty: "Aucun disque ne donne son état de santé (SMART)." }));
-    v.append(el(`<p class="hint">Un disque « à remplacer » peut lâcher sans prévenir : sauvegarde tes fichiers dès maintenant. L'usure d'un SSD NVMe est celle que le disque annonce lui-même (100 % = durée de vie prévue atteinte).</p>`));
+    v.append(el(`<p class="hint">Un disque « à remplacer » peut lâcher sans prévenir : sauvegarde tes fichiers dès maintenant. L'usure d'un SSD est celle que le disque annonce lui-même (100 % = durée de vie prévue atteinte).</p>`));
+    // Windows : température, usure et heures ne se lisent qu'avec les droits administrateur.
+    if (d.disksAdmin) v.append(bar(0, btn("Lire la température et l'usure", async (b) => {
+      const r = await act(b, () => api("/api/drivers/diskdetails", {}), "En attente de l'autorisation…");
+      if (r) { d.disks = r.disks; d.disksAdmin = false; V.drivers(); }
+    })));
   }
 
   // Batterie (portables)
@@ -1063,6 +1130,7 @@ V.wincleanup = async () => {
   if (d.windowsOld) v.append(el(`<p class="hint" style="margin-top:12px">Un dossier Windows.old existe : supprime-le depuis Paramètres > Stockage > Fichiers temporaires > « Installation(s) précédente(s) de Windows ».</p>`));
   const out = el(`<div style="margin-top:14px"></div>`);
   v.append(out);
+  if (!isLinux()) v.append(wuRepairPanel());
   async function doRun(b) {
     const chosen = d.items.filter((i) => picked.has(i.id));
     if (!chosen.length) return toast("Coche au moins une opération.");
@@ -1081,6 +1149,36 @@ V.wincleanup = async () => {
     refreshStatus();
   }
 };
+
+// Windows : réparer Windows Update (composants, puis DISM et SFC), en direct.
+function wuRepairPanel() {
+  const p = el(`<div class="panel" style="margin-top:16px"><div class="panel-title"><span>Réparer Windows Update</span></div>
+    <p class="hint" style="margin:0 0 12px">Quand une mise à jour échoue en boucle ou reste bloquée : Sonde suit la marche à suivre de Microsoft. Il remet à zéro les composants de Windows Update (les anciens dossiers sont gardés de côté), puis répare l'image de Windows (DISM) et vérifie les fichiers système (SFC). Compte 15 à 45 minutes ; le PC reste utilisable.</p>
+    <div class="wu-live"></div></div>`);
+  const live = $(".wu-live", p);
+  $(".panel-title", p).append(btn("Réparer", async (b) => {
+    if (!await confirmBox({ title: "Réparer Windows Update ?", admin: true, ok: "Réparer",
+      body: "<p>Les téléchargements de mises à jour en cours seront refaits par Windows. Laisse le PC allumé jusqu'à la fin (15 à 45 minutes).</p>" })) return;
+    b.disabled = true;
+    live.innerHTML = `<div class="zone-now working">Préparation</div><div class="sprog-bar"><span style="width:2%"></span></div><div class="trash-now"></div>`;
+    try {
+      await streamApi("/api/wurepair", {}, (e) => {
+        if (e.type === "step") { $(".zone-now", live).textContent = e.label; }
+        else if (e.type === "progress") $(".sprog-bar span", live).style.width = `${Math.max(2, Math.min(100, e.pct))}%`;
+        else if (e.type === "log") $(".trash-now", live).textContent = e.text;
+        else if (e.type === "done") {
+          live.innerHTML = "";
+          const ok = e.ok;
+          live.append(el(`<div class="card ${ok ? "" : "info"}"><div class="body"><div class="title">${ok ? "✓ Réparation terminée" : "Réparation terminée, avec des réserves"}</div><div class="why"></div></div></div>`));
+          $(".why", live).textContent = `${e.dism === 0 ? "L'image de Windows est saine ou a été réparée." : `DISM a renvoyé le code ${e.dism} : la réparation de l'image n'a pas abouti (connexion à Windows Update nécessaire).`} ${e.sfcText || ""} Redémarre le PC, puis relance Windows Update.`;
+          toast("Réparation terminée. Redémarre le PC avant de relancer Windows Update.", 9000);
+        } else if (e.type === "error") { live.innerHTML = ""; toast(e.error, 8000); }
+      });
+    } catch (err) { toast(err.message, 8000); }
+    b.disabled = false;
+  }));
+  return p;
+}
 
 // ======================================================== Mises à jour ===
 // Debian : apt et Flatpak, dépôts, santé de dpkg, TRIM. Les opérations apt
